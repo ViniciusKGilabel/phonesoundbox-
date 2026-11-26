@@ -257,7 +257,7 @@ internal static class MacMenuBar
             new("PhoneBox " + AppPaths.Version),
             new("Waiting for a phone…", DynamicTitle: () => adb.Connected ? "Phone connected" : "Waiting for a phone…"),
             MenuEntry.Separator,
-            new("Open Settings", () => Open(settingsUrl), Key: ","),
+            new("Open Settings", () => Open(LocalAuth.SettingsUrlFor(settingsUrl, configDir)), Key: ","),
             MenuEntry.Separator,
             new("Install update", () => _ = updates.ApplyAsync(), DynamicTitle: () => "Install update " + updates.Status().Latest,
                 Visible: () => updates.Status() is { AgentUpdate: true } or { AppUpdate: true }),

@@ -20,6 +20,7 @@ public sealed partial class ControlDeck
 
     private async Task<DeckResult> Workflow(DeckAction action, CancellationToken ct)
     {
+        if (!Features.AiIntegrations) return new(false, "GitHub workflows are switched off in this build");
         if (!Regex.IsMatch(action.Target, @"\A[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\z")
             || !Regex.IsMatch(action.Argument ?? "", @"\A[A-Za-z0-9_.-]+\z")) return new(false, "Configure a repository and workflow filename");
         var gh = ToolProcess.Find("gh"); if (gh is null) return new(false, "Install and sign in to GitHub CLI on the computer");

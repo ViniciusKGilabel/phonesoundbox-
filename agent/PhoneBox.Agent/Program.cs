@@ -30,7 +30,9 @@ try { firstInstance = single.WaitOne(waitMs); }
 catch (AbandonedMutexException) { firstInstance = true; }
 if (!firstInstance)
 {
-    try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo($"http://127.0.0.1:{Port}/") { UseShellExecute = true }); } catch { }
+    // signed in through the key file next to the settings this launch names (see LocalAuth)
+    var openDir = Path.GetDirectoryName(Path.GetFullPath(args.SkipWhile(a => a != "--config").Skip(1).FirstOrDefault() ?? AppPaths.ConfigPath)) ?? AppPaths.ConfigDir;
+    try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(LocalAuth.SettingsUrlFor(endpoint.SettingsUrl, openDir)) { UseShellExecute = true }); } catch { }
     return;
 }
 
@@ -42,6 +44,8 @@ var configDir = Path.GetDirectoryName(configPath) ?? AppPaths.ConfigDir;
 AppPaths.RestrictConfig(configPath);
 var configStore = new ConfigStore(configPath);
 configStore.PersistGenerated(); // keep the Wi-Fi token stable across restarts
+// the local port's own secret (owner-only file next to the settings), required on every local API call
+var localAuth = LocalAuth.LoadOrCreate(configDir);
 var lanCfg = configStore.Get().Lan;
 var lanCert = lanCfg.Enabled && lanCfg.Port != Port ? Lan.Certificate(configDir) : null;
 // USB uses the same certificate as Wi-Fi; the agent hands its fingerprint to the app over adb (see UsbLink.cs)
@@ -73,6 +77,7 @@ builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.PropertyNamin
 builder.Services.AddSingleton(configStore);
 builder.Services.AddSingleton(endpoint);
 builder.Services.AddSingleton(usb);
+builder.Services.AddSingleton(localAuth);
 builder.Services.AddSingleton<AudioControl>();
 builder.Services.AddSingleton<AppCatalog>();
 builder.Services.AddSingleton(_ => new ShortcutIconUploads(Path.Combine(configDir, "icons")));
@@ -121,14 +126,16 @@ builder.Services.AddSingleton<Dictation>();
 builder.Services.AddSingleton<SpectrumAnalyzer>();
 AddMonitor<SystemMonitor>(builder.Services);
 AddMonitor<MediaMonitor>(builder.Services);
-AddMonitor<QuotaMonitor>(builder.Services);
+// The AI integrations stay registered (other services and endpoints take them), but with Features.AiIntegrations off
+// they never start: no token is read, no session file is opened, and their snapshots stay empty.
+AddMonitor<QuotaMonitor>(builder.Services, Features.AiIntegrations);
 AddMonitor<ProcessMonitor>(builder.Services);
-AddMonitor<SessionMonitor>(builder.Services);
-AddMonitor<OpenCodeApprovals>(builder.Services);
+AddMonitor<SessionMonitor>(builder.Services, Features.AiIntegrations);
+AddMonitor<OpenCodeApprovals>(builder.Services, Features.AiIntegrations);
 AddMonitor<FeedMonitor>(builder.Services);
 builder.Services.AddSingleton<PhotoFrame>();
 builder.Services.AddSingleton<CameraFeeds>();
-AddMonitor<GitHubMonitor>(builder.Services);
+AddMonitor<GitHubMonitor>(builder.Services, Features.AiIntegrations);
 AddMonitor<PingMonitor>(builder.Services);
 AddMonitor<AdbReverse>(builder.Services);
 AddMonitor<SessionLockMonitor>(builder.Services);
@@ -275,7 +282,7 @@ app.MapGet("/api/latency", () => Results.Json(timings.Summary()));
 var gate = new RequestGate(Port, SameOrigins, usb, lanCert is not null ? lanCfg.Port : null, configStore,
     ctx => ctx.Request.Method == "GET" && ctx.Request.Path == "/api/controls/spotify/callback"
         && app.Services.GetRequiredService<SpotifyControl>().HasPendingState(ctx.Request.Query["state"]),
-    app.Logger);
+    app.Logger, localAuth);
 app.UseWebSockets();
 app.UseRouting();
 app.Use(gate.InvokeAsync);
@@ -316,7 +323,7 @@ app.MapPost("/api/pair/start", (ConfigStore cfg, PairingCodes codes) =>
     var hosts = Lan.Addresses();
     var fingerprint = Lan.Fingerprint(lanCert);
     var link = PairingCodes.Link(Environment.MachineName, fingerprint, lanCfg.Port, hosts, code);
-    var apk = $"https://github.com/ersinkoc/phonebox/releases/download/v{AppPaths.Version}/PhoneBox-{AppPaths.Version}.apk";
+    var apk = $"https://github.com/{cfg.Get().Updates.Repo}/releases/download/v{AppPaths.Version}/PhoneBox-{AppPaths.Version}.apk";
     return Results.Json(new
     {
         enabled = true,
@@ -364,6 +371,14 @@ app.MapPost("/api/restart", (IHostApplicationLifetime life) =>
 });
 
 // ---------------------------------------------------------------- settings UI (browser)
+// The one-time link from the tray, the menu bar or a second launch: trades a fresh signed time stamp for the cookie
+// that carries the local secret (see LocalAuth). A bad or used link just leads to the page, which asks to sign in.
+app.MapGet(LocalAuth.LoginPath, (HttpContext ctx) =>
+{
+    if (ctx.Connection.LocalPort == Port && localAuth.TryLogin(ctx.Request.Query["t"], ctx.Request.Query["n"], ctx.Request.Query["sig"], DateTimeOffset.UtcNow))
+        ctx.Response.Cookies.Append(LocalAuth.CookieName, localAuth.NewSession(DateTimeOffset.UtcNow), localAuth.CookieOptions());
+    return Results.Redirect("/");
+});
 app.MapGet("/", () =>
 {
     using var s = AppPaths.Resource("settings.html")!;
@@ -505,10 +520,16 @@ app.MapPost("/api/shortcuts/test", async (HttpRequest req, ConfigStore cfg, Push
     return err is null ? Results.Ok() : Results.BadRequest(new { error = err });
 });
 
-app.MapGet("/api/info", (AdbReverse adb, ConfigStore cfg, SystemMonitor monitor) => Results.Json(new
+app.MapGet("/api/info", (HttpRequest req, AdbReverse adb, ConfigStore cfg, SystemMonitor monitor) =>
+    // without the local secret (an installer checking that the agent is up): the version and nothing more
+    req.HttpContext.Connection.LocalPort == Port && !localAuth.Authorized(req)
+        ? Results.Json(new { version = AppPaths.Version, os = AppPaths.Os, signedIn = false })
+        : Results.Json(new
 {
     version = AppPaths.Version,
     os = AppPaths.Os,
+    signedIn = true,
+    features = new { ai = Features.AiIntegrations },
     sensors = new { lhm = monitor.LhmStatus },
     configPath = cfg.Path,
     logPath = AppPaths.LogPath,
@@ -522,7 +543,7 @@ app.MapGet("/api/info", (AdbReverse adb, ConfigStore cfg, SystemMonitor monitor)
     webviewProblem = WebViewDoctor.DiagnoseRecent(PhoneRegistry.All(), DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()),
     // the clipboard bridge is on but macOS gives the agent no text (its paste privacy setting): the card says so
     bridgeRefused = app.Services.GetService<ClipboardBridge>()?.Refused ?? false,
-}));
+    }));
 
 // Quotes for the Stocks widget: the watchlist comes from Config.Stocks.
 app.MapGet("/api/stocks", (StockService stocks, ConfigStore cfg) =>
@@ -570,7 +591,7 @@ app.MapPost("/api/phone-mic/setup", async (ConfigStore cfg, CancellationToken ct
 app.MapPost("/api/phone/open", async (AdbReverse adb) => { await adb.OpenPanelAsync(); return Results.Ok(); });
 
 // Widget types and page templates for the settings page's layout editor.
-app.MapGet("/api/catalog", () => Results.Text($"{{\"cols\":{Catalog.Cols},\"rows\":{Catalog.Rows},\"maxRows\":{Catalog.MaxRows},\"widgets\":{Catalog.WidgetsJson},\"templates\":{Catalog.TemplatesJson}}}",
+app.MapGet("/api/catalog", () => Results.Text($"{{\"cols\":{Catalog.Cols},\"rows\":{Catalog.Rows},\"maxRows\":{Catalog.MaxRows},\"widgets\":{Catalog.OfferedWidgetsJson},\"templates\":{Catalog.OfferedTemplatesJson}}}",
     "application/json; charset=utf-8"));
 
 // ---------------------------------------------------------------- webhook API: push data and events into the panel
@@ -1242,6 +1263,12 @@ app.MapDelete("/api/settings/shortcut-icon", (string id, HttpRequest req, Config
 app.Lifetime.ApplicationStarted.Register(() =>
     app.Logger.LogInformation("PhoneBox agent {Version} ready on http://127.0.0.1:{Port}, phone USB port {UsbPort} (config: {Path})",
         AppPaths.Version, Port, usb.Port, configPath));
+if (localAuth.Ephemeral)
+    app.Lifetime.ApplicationStarted.Register(() => app.Logger.LogWarning(
+        "could not read or write {File}: the local API secret lasts until the agent stops, so browsers sign in again after a restart",
+        Path.Combine(configDir, LocalAuth.FileName)));
+// AI integrations off: take this agent's old permission hooks out of the AI tools' settings (see AiHookCleanup)
+app.Lifetime.ApplicationStarted.Register(() => _ = Task.Run(() => AiHookCleanup.RemoveInstalled(Port, configStore.Get(), app.Logger)));
 
 // macOS, running as PhoneBox.app: the main thread belongs to the menu bar icon and the host runs beside it (MenuBarHost)
 if (!MenuBarHost.TryRun(app, args, endpoint, configDir)) app.Run();
@@ -1255,10 +1282,10 @@ if (AppRestart.Requested && (AppRestart.Executable ?? Environment.ProcessPath) i
     else System.Diagnostics.Process.Start(AppRestart.StartInfo(exe, args));
 }
 
-static void AddMonitor<T>(IServiceCollection s) where T : class, IHostedService
+static void AddMonitor<T>(IServiceCollection s, bool start = true) where T : class, IHostedService
 {
     s.AddSingleton<T>();
-    s.AddHostedService(sp => sp.GetRequiredService<T>());
+    if (start) s.AddHostedService(sp => sp.GetRequiredService<T>());
 }
 
 /// <summary>Body of POST /api/pair/claim.</summary>

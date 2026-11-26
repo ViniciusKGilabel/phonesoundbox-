@@ -14,14 +14,16 @@ public sealed class Tray : IHostedService
     private readonly IHostApplicationLifetime _life;
     private readonly AdbReverse _adb;
     private readonly ConfigStore _config;
+    private readonly LocalAuth _auth;
     private static readonly ResourceManager Strings = new("PhoneBox.Agent.TrayStrings", typeof(Tray).Assembly);
     private Thread? _thread;
     private ApplicationContext? _ctx;
     private Control? _invoker;
     private NotifyIcon? _icon;
 
-    public Tray(IHostApplicationLifetime life, AdbReverse adb, AgentEndpoint endpoint, ConfigStore config)
+    public Tray(IHostApplicationLifetime life, AdbReverse adb, AgentEndpoint endpoint, ConfigStore config, LocalAuth auth)
     {
+        _auth = auth;
         SettingsUrl = endpoint.SettingsUrl;
         _life = life;
         _adb = adb;
@@ -73,7 +75,7 @@ public sealed class Tray : IHostedService
         menu.Items.Add(new ToolStripMenuItem($"PhoneBox {AppPaths.Version}") { Enabled = false });
         menu.Items.Add(status);
         menu.Items.Add(new ToolStripSeparator());
-        var settings = new ToolStripMenuItem("", null, (_, _) => OpenUrl(SettingsUrl)) { Font = new Font(menu.Font, FontStyle.Bold) };
+        var settings = new ToolStripMenuItem("", null, (_, _) => OpenSettings()) { Font = new Font(menu.Font, FontStyle.Bold) };
         menu.Items.Add(settings);
         // cancelled while Windows is ending the session (no adb is started then, for at most a minute): nothing to show
         var openPanel = menu.Items.Add("", null, async (_, _) => { try { await _adb.OpenPanelAsync(); } catch (OperationCanceledException) { } });
@@ -108,7 +110,7 @@ public sealed class Tray : IHostedService
             ContextMenuStrip = menu,
             Visible = true,
         };
-        _icon.DoubleClick += (_, _) => OpenUrl(SettingsUrl);
+        _icon.DoubleClick += (_, _) => OpenSettings();
         _adb.StateChanged += () =>
         {
             try { host.BeginInvoke(() => _icon.Text = Tooltip(UiCulture())); } catch { }
@@ -122,6 +124,12 @@ public sealed class Tray : IHostedService
     private static void OpenUrl(string url)
     {
         try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
+    }
+
+    /// <summary>The settings page, signed in with a fresh one-time link (see LocalAuth).</summary>
+    private void OpenSettings()
+    {
+        OpenUrl(_auth.LoginUrl(SettingsUrl));
     }
 
     private static void Open(string app, string path)

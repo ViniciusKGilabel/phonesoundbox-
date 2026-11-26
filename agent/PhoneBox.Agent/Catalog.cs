@@ -29,6 +29,33 @@ public static class Catalog
     public static readonly IReadOnlyList<TemplateDef> Templates =
         JsonSerializer.Deserialize<List<TemplateDef>>(TemplatesJson, Opts) ?? [];
 
+    /// <summary>widgets.json without the widgets of switched-off areas (<see cref="Features"/>): what the editor offers.</summary>
+    public static readonly string OfferedWidgetsJson = OfferedWidgets(WidgetsJson);
+
+    /// <summary>templates.json without those widgets; a template left with none is not offered at all.</summary>
+    public static readonly string OfferedTemplatesJson = OfferedTemplates(TemplatesJson);
+
+    internal static string OfferedWidgets(string json)
+    {
+        if (Features.AiIntegrations) return json;
+        var list = System.Text.Json.Nodes.JsonNode.Parse(json)!.AsArray();
+        foreach (var w in list.Where(w => !Features.WidgetAllowed((string?)w?["type"])).ToList()) list.Remove(w);
+        return list.ToJsonString();
+    }
+
+    internal static string OfferedTemplates(string json)
+    {
+        if (Features.AiIntegrations) return json;
+        var list = System.Text.Json.Nodes.JsonNode.Parse(json)!.AsArray();
+        foreach (var t in list.ToList())
+        {
+            if (t?["widgets"] is not System.Text.Json.Nodes.JsonArray widgets) continue;
+            foreach (var w in widgets.Where(w => !Features.WidgetAllowed((string?)w?["type"])).ToList()) widgets.Remove(w);
+            if (widgets.Count == 0) list.Remove(t);
+        }
+        return list.ToJsonString();
+    }
+
     private static readonly Dictionary<string, (int MinW, int MinH)> Sizes = LoadSizes();
 
     public static bool IsWidget(string type) => Sizes.ContainsKey(type);

@@ -15,8 +15,10 @@ namespace PhoneBox.Agent;
 /// </summary>
 /// <param name="lanPort">The Wi-Fi listener's port, or null when the agent did not open one.</param>
 /// <param name="spotifyCallback">True for the browser's return from the Spotify sign-in, which a foreign site starts.</param>
+/// <param name="localAuth">When set, every local-port API request must also carry the per-install secret (see
+/// <see cref="LocalAuth"/>). Without it, any process that is not a browser passes the checks above.</param>
 internal sealed class RequestGate(int localPort, string[] sameOrigins, UsbLink usb, int? lanPort, ConfigStore config,
-    Func<HttpContext, bool> spotifyCallback, ILogger log)
+    Func<HttpContext, bool> spotifyCallback, ILogger log, LocalAuth? localAuth = null)
 {
     /// <summary>
     /// True when the request came from the iOS companion app, either by the explicit <c>X-PhoneBox-Platform: ios</c>
@@ -62,7 +64,15 @@ internal sealed class RequestGate(int localPort, string[] sameOrigins, UsbLink u
 
     public async Task InvokeAsync(HttpContext ctx, Func<Task> next)
     {
+        if (Features.IsDisabledPath(ctx.Request.Path))
+        {
+            ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
         var origin = ctx.Request.Headers.Origin.ToString();
+        // false for a local-port request without the secret (only the open paths get that far): its phone headers must
+        // not mark a phone as connected, register a device or set the app version that update prompts follow
+        var trusted = true;
         if (ctx.Connection.LocalPort == usb.Port && ctx.Request.IsHttps)
         {
             // the phone over USB: only with its app's key, and only the paths the phone uses
@@ -105,12 +115,21 @@ internal sealed class RequestGate(int localPort, string[] sameOrigins, UsbLink u
                 ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
                 return;
             }
+            if (localAuth is not null && !localAuth.Authorized(ctx.Request))
+            {
+                if (!LocalAuth.IsOpen(ctx.Request) && !spotifyCallback(ctx))
+                {
+                    ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                    return;
+                }
+                trusted = false;
+            }
         }
         // any request from the app shows the phone is there, not only a state poll: an app on the live stream polls
         // nothing, and a stream that is not yet (or no longer) open must not hide the phone from a permission prompt (#497)
-        if (ctx.Request.Headers.ContainsKey("X-PhoneBox-App"))
+        if (trusted && ctx.Request.Headers.ContainsKey("X-PhoneBox-App"))
             Interlocked.Exchange(ref ApprovalStore.PhoneLastSeen, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-        if (ctx.Request.Headers.TryGetValue("X-PhoneBox-Device", out var device))
+        if (trusted && ctx.Request.Headers.TryGetValue("X-PhoneBox-Device", out var device))
         {
             var problem = PhoneRegistry.Touch(device.ToString(), ctx.Request.Headers["X-PhoneBox-Model"].ToString(),
                 ctx.Connection.LocalPort == usb.Port ? "USB" : ctx.Connection.LocalPort == localPort ? "local" : "Wi-Fi", ctx.Request.Headers["X-PhoneBox-WebView"].ToString());
@@ -118,7 +137,7 @@ internal sealed class RequestGate(int localPort, string[] sameOrigins, UsbLink u
         }
         // Only Android app versions are compared against the APK release in UpdateService.Status(): the iOS app has its
         // own version (e.g. 0.1.0), and storing it here would show false update prompts and reinstall the Android APK (#604).
-        if (!IsIosApp(ctx.Request.Headers) && ctx.Request.Headers.TryGetValue("X-PhoneBox-App", out var appVersion) && appVersion.ToString().Length is > 0 and < 32)
+        if (trusted && !IsIosApp(ctx.Request.Headers) && ctx.Request.Headers.TryGetValue("X-PhoneBox-App", out var appVersion) && appVersion.ToString().Length is > 0 and < 32)
             UpdateService.AppVersion = appVersion.ToString();
         ctx.Response.Headers.CacheControl = "no-store";
         // only the panel may be framed, and only by the settings page itself (the live preview)

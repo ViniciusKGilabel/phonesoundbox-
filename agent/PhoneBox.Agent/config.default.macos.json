@@ -72,8 +72,6 @@
   // its widgets on the first save.
   "pages": [
     { "template": "home" },
-    { "template": "ai" },
-    { "template": "work" },
     { "template": "system" },
     { "template": "procs" },
     { "template": "deck" },

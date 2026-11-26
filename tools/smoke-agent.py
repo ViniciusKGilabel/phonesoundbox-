@@ -12,7 +12,10 @@ with tempfile.TemporaryDirectory(prefix='phonebox-smoke-') as work:
  # and let the temporary file's delete-on-close semantics handle it without masking configuration cleanup errors.
  with tempfile.TemporaryFile(mode='w+b') as log:
   proc=subprocess.Popen([str(exe),'--config',str(config),'--port',str(args.port)],stdout=log,stderr=log,creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
-  def get(path):return json.load(urllib.request.urlopen(base+path,timeout=3))
+  # the local API needs the agent's own secret, written next to the config (LocalAuth); read it like a script would
+  key_file=pathlib.Path(work)/'local-api.key'
+  def auth():return {'X-PhoneBox-Local':key_file.read_text().strip()} if key_file.exists() else {}
+  def get(path):return json.load(urllib.request.urlopen(urllib.request.Request(base+path,headers=auth()),timeout=3))
   try:
    deadline=time.monotonic()+40
    while True:
@@ -25,7 +28,14 @@ with tempfile.TemporaryDirectory(prefix='phonebox-smoke-') as work:
     assert time.monotonic()<deadline,'API readiness deadline exceeded'
     time.sleep(.3)
    assert get('/api/info')['version']==args.version,'Artifact version differs'
-   catalog=get('/api/catalog');assert {'stack','codexbar'}<={w['type'] for w in catalog['widgets']}
+   catalog=get('/api/catalog');types={w['type'] for w in catalog['widgets']}
+   assert 'stack' in types and 'codexbar' not in types,'Catalog should offer stacks and no AI widgets'
+   # without the secret: the version only, and no settings or commands
+   assert set(json.load(urllib.request.urlopen(base+'/api/info',timeout=3)))=={'version','os','signedIn'},'Info told more without the secret'
+   for path,method in (('/api/settings','GET'),('/api/shortcuts/test','POST')):
+    try:urllib.request.urlopen(urllib.request.Request(base+path,method=method,data=b'{}' if method=='POST' else None,headers={'Content-Type':'application/json'}),timeout=3)
+    except urllib.error.HTTPError as error:assert error.code==401,(path,error.code)
+    else:raise AssertionError(f'{path} answered without the local secret')
    assert b'W.stack' in urllib.request.urlopen(base+'/panel/widgets/stack.js',timeout=3).read(),'Stack module missing from artifact'
    try:urllib.request.urlopen(urllib.request.Request(base+'/api/settings',headers={'Origin':'https://foreign.example'}),timeout=3)
    except urllib.error.HTTPError as error:assert error.code==403
@@ -51,7 +61,7 @@ with tempfile.TemporaryDirectory(prefix='phonebox-smoke-') as work:
    # A filled Big button asks for the upload only, as upload=true: the real query binding must accept it, serve the
    # upload, and answer 404 (not the program icon, not 400) once the upload is removed.
    def status(path,method='GET',data=None,ctype=None):
-    req=urllib.request.Request(base+path,data=data,method=method,headers={'Content-Type':ctype} if ctype else {})
+    req=urllib.request.Request(base+path,data=data,method=method,headers={**auth(),**({'Content-Type':ctype} if ctype else {})})
     try:
      with urllib.request.urlopen(req,timeout=3) as r:return r.status,r.headers.get('Content-Type','')
     except urllib.error.HTTPError as error:return error.code,''

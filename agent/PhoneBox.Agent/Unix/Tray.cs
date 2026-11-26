@@ -39,7 +39,7 @@ public static class MenuBarHost
         {
             MacMenuBar.Run(MacMenuBar.Entries(app.Services.GetRequiredService<AdbReverse>(), app.Services.GetRequiredService<UpdateService>(),
                 app.Lifetime, endpoint.SettingsUrl, configDir), () => host.IsCompleted, app.Lifetime.ApplicationStopping, app.Lifetime.StopApplication,
-                () => MacMenuBar.OpenUrl(endpoint.SettingsUrl), app.Logger);
+                () => MacMenuBar.OpenUrl(LocalAuth.SettingsUrlFor(endpoint.SettingsUrl, configDir)), app.Logger);
         }
         catch (Exception ex) { app.Logger.LogWarning(ex, "menu bar icon failed"); }
         host.GetAwaiter().GetResult();

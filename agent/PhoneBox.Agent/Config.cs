@@ -339,7 +339,13 @@ public sealed class UpdateConfig
 {
     /// <summary>Install new GitHub releases automatically (phone app over USB, agent in place).</summary>
     public bool Auto { get; set; } = true;
-    public string Repo { get; set; } = "ersinkoc/phonebox";
+    public string Repo { get; set; } = DefaultRepo;
+
+    /// <summary>This fork's releases. Upstream's would install over the fork's build (and bring back what it switches off).</summary>
+    public const string DefaultRepo = "ViniciusKGilabel/phonesoundbox-";
+
+    /// <summary>The upstream project's repository: a setting still pointing there is moved to <see cref="DefaultRepo"/>.</summary>
+    public const string UpstreamRepo = "ersinkoc/phonebox";
 }
 
 public sealed class ClaudeConfig
@@ -703,7 +709,9 @@ public sealed class Shortcut
 public sealed partial class ConfigStore(string path)
 {
     /// <summary>Pages a fresh install (or an empty page list) starts with.</summary>
-    public static readonly string[] DefaultPages = ["home", "ai", "work", "system", "procs", "deck"];
+    public static readonly string[] DefaultPages = Features.AiIntegrations
+        ? ["home", "ai", "work", "system", "procs", "deck"]
+        : ["home", "system", "procs", "deck"];
 
     public static readonly JsonSerializerOptions ReadOpts = new()
     {
@@ -932,7 +940,8 @@ public sealed partial class ConfigStore(string path)
         c.Bridge ??= new(); // a hand-edited "bridge": null must not break /api/config or the clipboard poll
         c.OpenCode.TimeoutSec = Math.Clamp(c.OpenCode.TimeoutSec, 10, 3600);
         c.OpenCode.AlwaysCountdownSec = Math.Clamp(c.OpenCode.AlwaysCountdownSec, 0, 60);
-        if (string.IsNullOrWhiteSpace(c.Updates.Repo)) c.Updates.Repo = "ersinkoc/phonebox";
+        if (string.IsNullOrWhiteSpace(c.Updates.Repo) || string.Equals(c.Updates.Repo.Trim(), UpdateConfig.UpstreamRepo, StringComparison.OrdinalIgnoreCase))
+            c.Updates.Repo = UpdateConfig.DefaultRepo;
         c.Lan.Port = Math.Clamp(c.Lan.Port, 1024, 65535);
         if (string.IsNullOrWhiteSpace(c.Lan.Token)) c.Lan.Token = NewToken();
         if (string.IsNullOrWhiteSpace(c.Lan.WebhookToken)) c.Lan.WebhookToken = NewToken();
