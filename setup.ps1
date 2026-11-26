@@ -48,6 +48,18 @@ param(
     [switch]$AllowAdministrator
 )
 
+# LOCKED in this fork (ViniciusKGilabel/phonesoundbox-). This one-step installer downloads releases from the upstream
+# project (ersinkoc/phonebox), whose builds turn back on the AI integrations this fork switches off and do not have the
+# local API secret. Install this fork from its own releases or build it from source (scripts\install.ps1).
+# The installer tests set PHONEBOX_SETUP_UNLOCKED=1 to run it anyway. "return", not "exit": under irm | iex, exit
+# would close the user's PowerShell window.
+if ($env:PHONEBOX_SETUP_UNLOCKED -ne '1') {
+    Write-Host 'This installer is disabled in this fork: it would install the upstream PhoneBox build.' -ForegroundColor Yellow
+    Write-Host 'Download a release from https://github.com/ViniciusKGilabel/phonesoundbox-/releases'
+    Write-Host 'or build from source: scripts\install.ps1 (see docs\SETUP.md).'
+    return
+}
+
 $Repo = 'ersinkoc/phonebox'
 $Package = 'net.oxog.phonebox.deskpanel'
 $SettingsUrl = 'http://127.0.0.1:8765'
@@ -537,7 +549,8 @@ function Install-PhoneBox {
             }
             if ($up) {
                 Write-Ok "PhoneBox is running: settings at $SettingsUrl (also from the tray icon)"
-                try { Start-Process $SettingsUrl } catch { }
+                # a second launch of the agent opens the settings signed in (the local API needs the agent's own secret) and exits
+                try { Start-Process -FilePath $exe -WorkingDirectory $app } catch { }
             } elseif ($blocked) {
                 # explained above
             } elseif (-not (Test-Path $exe)) {

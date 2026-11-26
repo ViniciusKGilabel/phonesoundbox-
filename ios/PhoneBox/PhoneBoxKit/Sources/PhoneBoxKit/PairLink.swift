@@ -4,7 +4,7 @@ import Foundation
 /// (android/app/src/main/java/net/oxog/phonebox/deskpanel/AgentLink.kt, `PairLink`).
 ///
 /// Accepted forms:
-/// - `https://ersinkoc.github.io/phonebox/pair/#v=1&pc=…&fp=…&port=…&h=…&c=…`
+/// - `https://viniciuskgilabel.github.io/phonesoundbox-/pair/#v=1&pc=…&fp=…&port=…&h=…&c=…`
 ///   (the QR code itself; the data is in the fragment so it never reaches a web server)
 /// - `phonebox://pair?v=1&pc=…&fp=…&port=…&h=…&c=…`
 ///   (the "Open in PhoneBox" button on that page)
@@ -42,7 +42,7 @@ public struct PairLink: Equatable, Identifiable, Sendable {
         let host = (components.host ?? "").lowercased()
 
         let raw: String
-        if scheme == "https" && host == "ersinkoc.github.io" && components.path.hasPrefix("/phonebox/pair") {
+        if scheme == "https" && host == "viniciuskgilabel.github.io" && components.path.hasPrefix("/phonesoundbox-/pair/") {
             guard let fragment = components.percentEncodedFragment else { return nil }
             raw = fragment
         } else if scheme == "phonebox" && host == "pair" {

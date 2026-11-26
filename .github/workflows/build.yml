@@ -101,6 +101,8 @@ jobs:
           ./tools/test-windows-source-publish.ps1
       - name: Unix installer regression checks with the system Bash
         if: runner.os != 'Windows'
+        env:
+          PHONEBOX_SETUP_UNLOCKED: '1' # setup.sh is locked in this fork; its own checks still run
         run: |
           python3 tools/test-unix-installer.py --bash /bin/bash
           python3 tools/test-unix-autostart.py /bin/bash
@@ -194,11 +196,18 @@ jobs:
         run: |
           chmod +x out/PhoneBoxAgent
           out/PhoneBoxAgent > agent.log 2>&1 &
-          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8765/api/state > state.json && break; sleep 1; done
+          # the local API needs the agent's own secret, written next to the settings on first start (LocalAuth)
+          key_file="$HOME/.config/PhoneBox/local-api.key"
+          if [ "$RUNNER_OS" = macOS ]; then key_file="$HOME/Library/Application Support/PhoneBox/local-api.key"; fi
+          auth() { printf 'X-PhoneBox-Local: %s' "$(cat "$key_file" 2>/dev/null)"; }
+          for i in $(seq 1 30); do curl -sf -H "$(auth)" http://127.0.0.1:8765/api/state > state.json && break; sleep 1; done
           sleep 4
-          curl -sf http://127.0.0.1:8765/api/state > state.json
-          curl -sf "http://127.0.0.1:8765/api/procs?top=3" > /dev/null; sleep 4
-          curl -sf "http://127.0.0.1:8765/api/procs?top=3" > procs.json
+          curl -sf -H "$(auth)" http://127.0.0.1:8765/api/state > state.json
+          curl -sf -H "$(auth)" "http://127.0.0.1:8765/api/procs?top=3" > /dev/null; sleep 4
+          curl -sf -H "$(auth)" "http://127.0.0.1:8765/api/procs?top=3" > procs.json
+          # and nothing without it
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/api/settings)
+          echo "settings without the local secret: $code"; test "$code" = 401
           cat agent.log
           head -c 700 state.json; echo
           head -c 500 procs.json; echo

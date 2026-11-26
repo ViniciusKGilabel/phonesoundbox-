@@ -225,7 +225,7 @@ jobs:
           cat >> notes.md <<'EOF'
 
           ---
-          [Code signing policy](https://github.com/ersinkoc/phonebox#code-signing-policy) · [Privacy policy](https://github.com/ersinkoc/phonebox/blob/main/PRIVACY.md)
+          [Code signing policy](https://github.com/${{ github.repository }}#code-signing-policy) · [Privacy policy](https://github.com/${{ github.repository }}/blob/main/PRIVACY.md)
           EOF
       - name: Create the release
         env:
@@ -234,8 +234,9 @@ jobs:
           v="${{ needs.version.outputs.version }}"
           gh release create "v$v" dist/* --title "PhoneBox $v" --notes-file notes.md --target "${{ github.sha }}" ${{ inputs.draft && '--draft' || '' }}
       # a draft's downloads are not public yet, so the package manifests follow only published releases
+      # upstream's package manifests point at upstream's downloads: a fork leaves them alone
       - name: Update the Scoop bucket and the winget manifests
-        if: ${{ !inputs.draft }}
+        if: ${{ !inputs.draft && github.repository == 'ersinkoc/phonebox' }}
         run: |
           v="${{ needs.version.outputs.version }}"
           sha=$(sha256sum "dist/PhoneBoxAgent-$v-win-x64.zip" | cut -d' ' -f1)

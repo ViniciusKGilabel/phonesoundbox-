@@ -5,7 +5,7 @@ final class PairLinkTests: XCTestCase {
     private let fingerprint = "a1b2c3d4" + String(repeating: "0", count: 56)
 
     private func httpsLink(query: String) -> String {
-        "https://ersinkoc.github.io/phonebox/pair/#\(query)"
+        "https://viniciuskgilabel.github.io/phonesoundbox-/pair/#\(query)"
     }
 
     func testParsesTheQrCodeFragmentLink() {
@@ -53,12 +53,12 @@ final class PairLinkTests: XCTestCase {
     func testRejectsMalformedLinks() {
         let bad = [
             "https://example.com/phonebox/pair/#v=1&fp=\(fingerprint)&port=8766&h=10.0.0.1&c=abcdefghijklmnop",
-            "https://ersinkoc.github.io/phonebox/pair/#v=2&fp=\(fingerprint)&port=8766&h=10.0.0.1&c=abcdefghijklmnop",
-            "https://ersinkoc.github.io/phonebox/pair/#v=1&fp=\(String(fingerprint.dropLast()))&port=8766&h=10.0.0.1&c=abcdefghijklmnop",
-            "https://ersinkoc.github.io/phonebox/pair/#v=1&fp=\(fingerprint)&port=0&h=10.0.0.1&c=abcdefghijklmnop",
-            "https://ersinkoc.github.io/phonebox/pair/#v=1&fp=\(fingerprint)&port=8766&h=8.8.8.8&c=abcdefghijklmnop",
-            "https://ersinkoc.github.io/phonebox/pair/#v=1&fp=\(fingerprint)&port=8766&c=abcdefghijklmnop",
-            "https://ersinkoc.github.io/phonebox/pair/#v=1&fp=\(fingerprint)&port=8766&h=10.0.0.1&c=short",
+            "https://viniciuskgilabel.github.io/phonesoundbox-/pair/#v=2&fp=\(fingerprint)&port=8766&h=10.0.0.1&c=abcdefghijklmnop",
+            "https://viniciuskgilabel.github.io/phonesoundbox-/pair/#v=1&fp=\(String(fingerprint.dropLast()))&port=8766&h=10.0.0.1&c=abcdefghijklmnop",
+            "https://viniciuskgilabel.github.io/phonesoundbox-/pair/#v=1&fp=\(fingerprint)&port=0&h=10.0.0.1&c=abcdefghijklmnop",
+            "https://viniciuskgilabel.github.io/phonesoundbox-/pair/#v=1&fp=\(fingerprint)&port=8766&h=8.8.8.8&c=abcdefghijklmnop",
+            "https://viniciuskgilabel.github.io/phonesoundbox-/pair/#v=1&fp=\(fingerprint)&port=8766&c=abcdefghijklmnop",
+            "https://viniciuskgilabel.github.io/phonesoundbox-/pair/#v=1&fp=\(fingerprint)&port=8766&h=10.0.0.1&c=short",
             "phonebox://somewhere?v=1&fp=\(fingerprint)&port=8766&h=10.0.0.1&c=abcdefghijklmnop",
             "not a link",
             "",

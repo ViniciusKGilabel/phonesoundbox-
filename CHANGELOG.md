@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+## 0.9.31 — 2026-11-25
+
+First release of this fork (ViniciusKGilabel/phonesoundbox-), built on upstream PhoneBox 0.9.30.
+
+**Security**
+- The local API on 127.0.0.1:8765 needs a per-install secret (`local-api.key`, owner-only, next to `config.json`).
+  Before, any local program that is not a browser could read every token in the settings and run commands.
+  - Browsers sign in through a one-time link that the tray, the macOS menu bar or a second launch of the agent opens.
+    The link sets a 7-day session cookie, never the key itself.
+  - Scripts send the key in the `X-PhoneBox-Local` header.
+- Phone headers on requests without the secret no longer mark a phone as connected or set the app version.
+
+**Removed (switched off at the root, see `Features.cs`)**
+- AI coding integrations:
+  - Claude, Codex, Antigravity, Grok and CodexBar quotas. No AI vendor token is read.
+  - AI sessions and transcripts.
+  - Permission prompts and approvals from the phone. Hooks this agent installed are removed on start, with a backup.
+- GitHub widgets and GitHub workflow runs.
+
+**Fork**
+- Updates, the app download and the pairing page come from this fork:
+  - releases from `ViniciusKGilabel/phonesoundbox-`;
+  - the pairing QR opens `viniciuskgilabel.github.io/phonesoundbox-/pair/`.
+- The one-step installers (`setup.sh`, `setup.ps1`) are locked, because they install the upstream build. Download a
+  release or build from source (`scripts/install.sh`, `scripts/install.ps1`).
+
 ## 0.9.30 — 2026-11-25
 
 - Windows 11 on ARM: native ARM64 agent ZIP and architecture-aware PowerShell setup (#602).

@@ -60,7 +60,7 @@ toolchain (the macOS workflow runs them):
 swift test --package-path ios/PhoneBox/PhoneBoxKit
 ```
 
-They cover both pairing-link forms (`https://ersinkoc.github.io/phonebox/pair/#…` and
+They cover both pairing-link forms (`https://viniciuskgilabel.github.io/phonesoundbox-/pair/#…` and
 `phonebox://pair?…`), the allowed private/Tailscale IPv4 ranges, the check code, the `/agent/*` proxy
 allowlist (panel header, read-only images, methods and traversal attempts), and the USB handshake lines.
 

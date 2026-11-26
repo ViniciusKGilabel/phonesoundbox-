@@ -181,7 +181,7 @@ struct UnpairedView: View {
     private func accept(_ value: String) {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let link = PairLink(urlString: trimmed) else {
-            pairing.errorMessage = "That is not a PhoneBox pairing link. Scan the QR code shown by the computer, or paste the whole link (it starts with phonebox://pair or https://ersinkoc.github.io/phonebox/pair/)."
+            pairing.errorMessage = "That is not a PhoneBox pairing link. Scan the QR code shown by the computer, or paste the whole link (it starts with phonebox://pair or https://viniciuskgilabel.github.io/phonesoundbox-/pair/)."
             return
         }
         pairing.errorMessage = nil

@@ -18,6 +18,17 @@
 #   --dry-run           download and check everything, show what would happen, change nothing
 set -euo pipefail
 
+# LOCKED in this fork (ViniciusKGilabel/phonesoundbox-). This one-step installer downloads releases from the upstream
+# project (ersinkoc/phonebox), whose builds turn back on the AI integrations this fork switches off and do not have
+# the local API secret. Install this fork from its own releases or build it from source (scripts/install.sh).
+# The installer tests set PHONEBOX_SETUP_UNLOCKED=1 to run it anyway.
+if [ "${PHONEBOX_SETUP_UNLOCKED:-}" != 1 ]; then
+  echo "This installer is disabled in this fork: it would install the upstream PhoneBox build." >&2
+  echo "Download a release from https://github.com/ViniciusKGilabel/phonesoundbox-/releases" >&2
+  echo "or build from source: scripts/install.sh (see docs/SETUP.md)." >&2
+  exit 1
+fi
+
 repo="ersinkoc/phonebox"
 package="net.oxog.phonebox.deskpanel"
 settings_url="http://127.0.0.1:8765"
@@ -658,8 +669,10 @@ main() {
     done
     if [ "$up" = 1 ]; then
       ok "PhoneBox is running: settings at $settings_url"
-      if [ "$os" = osx ]; then open "$settings_url" >/dev/null 2>&1 || true
-      elif [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && have xdg-open; then (xdg-open "$settings_url" >/dev/null 2>&1 &) || true; fi
+      # a second launch of the agent opens the settings signed in (the local API needs the agent's own secret) and exits
+      if [ "$os" = osx ] || { [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && have xdg-open; }; then
+        ("$app/PhoneBoxAgent" >/dev/null 2>&1 &) || true
+      fi
     else
       caution "The agent did not answer. Its log: $(dirname "$app")/agent.log"
     fi

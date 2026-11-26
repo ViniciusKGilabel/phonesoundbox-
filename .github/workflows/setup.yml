@@ -2,18 +2,15 @@ name: setup
 
 # Runs the one-step installers (setup.ps1, setup.sh) for real against the published release:
 # download, checksum, dependencies, install, start, and a second run that updates a running agent.
+# This fork locks setup.ps1 and setup.sh (they install upstream's build), so this runs only when started by hand.
 on:
-  pull_request:
-    paths: [setup.ps1, setup.sh, tools/test-unix-setup-phone.py, .github/workflows/setup.yml]
-  push:
-    branches: [main]
-    paths: [setup.ps1, setup.sh, tools/test-unix-setup-phone.py, .github/workflows/setup.yml]
-  schedule:
-    - cron: '17 6 * * 1'   # weekly: the latest release against current winget, Homebrew and distribution packages
   workflow_dispatch:
 
 permissions:
   contents: read
+
+env:
+  PHONEBOX_SETUP_UNLOCKED: '1' # a run started by hand means it: past the fork's lock
 
 jobs:
   lint:
